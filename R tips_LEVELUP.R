@@ -1,5 +1,5 @@
 # R tips
-
+# remember to commit and push me every now and then UwU
 
 #translate using google (gl_translate)
 
