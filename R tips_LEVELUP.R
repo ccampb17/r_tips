@@ -10,17 +10,33 @@ for(i in 1:nrow(update.table)){
   update.table$act.title.en[i]=gl_translate(as.character(update.table$act.title.ll[i]))$translatedText
 }
 
-#get the running processes as a df on the server
-devtools::source_url("https://github.com/mathosi/cluster_check/blob/master/ps_to_df.R?raw=TRUE")
-ps.to.df() #List All processes sorted by %CPU usage
-ps.to.df(bylist.selection = "C rsession") #List All processes named 'rsession' sorted by %CPU usage
 
 
-#pesky factors
+
+
+# dataframes --------------------------------------------------------------
+
+
+# pesky factors 
+
 library(dplyr)
 inventory %>% mutate_if(is.factor, as.character) -> inventory
 
-#use extract_tables to get table from PDF - must have consistent rows
+#remove rows of a df that have NAs
+squad.predictions = training.data[rowSums(is.na(training.data)) == 0,]
+
+#method to remove NAs from a vector, useful when working with %>% 
+v %>% purrr::discard(is.na)
+v %>% `[`(!is.na(.))
+
+# Count number of distinct elements per group (like GROUP BY in SQL)
+counts = aggregate(unique.thing ~ group.variable, data.frame, function(x) length(unique(x)))
+
+
+
+# use extract_tables to get table from PDF
+# must have consistent rows
+
 plop = extract_tables("https://www.jbic.go.jp/ja/information/news/news-2018/pdf/0702-011178_5.pdf")
 
 for (i in 1:length(plop)){
@@ -34,71 +50,23 @@ for (i in 1:length(plop)){
   
 }
 
-# Count number of distinct elements per group (like GROUP BY in SQL)
-
-counts = aggregate(unique.thing ~ group.variable, data.frame, function(x) length(unique(x)))
-
-#play a system sound in console
-#simple, only plays default 'beep'
-system("rundll32 user32.dll,MessageBeep 1")
-
-#more complex, can play most sounds
-system("PowerShell -C (New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()")
-
-system("PowerShell -C (New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\tada.wav').PlaySync()")
 
 
-# windows system command to find a string
-#'findstr /s /i fw_user *.R'
+
+
+
+
+# ENCODING AND REGEX ------------------------------------------------------
+
+
+#fix encoding of a column in a dataframe (or other vector)
+Encoding(articles$act.title.en) <- "UTF-8"
+#warning: if you are doing this, it means the problem is elsewhere :)
 
 
 #unescape unicode like <U+123F>
 library(stringi)
 stri_unescape_unicode(gsub("<U\\+(....)>", "\\\\u\\1", desired.departments))
-
-
-
-##timing logic for unstable scrapers
-
-library(R.utils)
-
-
-# adding article info loop
-
-  for (i in 1:nrow(update.table)){
-    cat(sprintf("Extracting article info %i/%i...", i, nrow(update.table)))
-    tryCatch(
-      withTimeout( {
-        update.table$act.description.en[i] = extractInfo(remDr, update.table$act.url[i]);
-        cat("[Done]\n") },
-        timeout = 20),
-      TimeoutException = function(ex){ cat("[Skipped due to timeout]\n")}, 
-      error=function(cond){
-        message("[caught error] timeout, skipping")
-      },
-      warning=function(cond){
-        message("[caught warning] timeout, skipping")
-      }
-    )
-    
-    
-  }
-  
-# get the URL of a page after any redirects
-r = httr::GET(lex.source.url)
-source.url = r$url
-
-#direct GET to xpath-able html doc
-html <- httr::GET(url = tgt.url) %>% 
-  httr::content() %>%
-  htmlParse(asText=T, encoding = "UTF-8")
-
-#remove rows of a df that have NAs
-squad.predictions = training.data[rowSums(is.na(training.data)) == 0,]
-
-#method to remove NAs from a vector, useful when working with %>% 
-v %>% purrr::discard(is.na)
-v %>% `[`(!is.na(.))
 
 
 #FTFY
@@ -108,6 +76,57 @@ ftfy$fix_encoding("Ð¶â€“â€¡ÐµÂ­â€”ÐµÐŠâ€“Ð³Ðƒâ
 ftfy$fix_and_explain("è­ãƒ»ï½­æ€œå–§ç¸ºãƒ»")
 
 
+
+#regex for CJK characters, must have perl enabled!
+grepl(pattern = "[\\p{Han}\\p{Hangul}]", 
+      x = "ì¤‘êµ­ í…ì„¼íŠ¸, ìŒì•…ì €ìž‘ê¶Œ ë…ì ì‚¬ìš©ê¶Œ í¬ê¸°ì— ê´€í•œ ì„±ëª…ì„œ ë°œí‘œ", 
+      perl=T)
+
+# another regex for japanese chars
+grepl(pattern = "^([一-龠]+|[ぁ-ゔ]+|[ァ-ヴー]+|[ａ-ｚＡ-Ｚ０-９]+|[々〆〤ヶ])")
+
+#remove backslashes
+gsub("\\\\", "", string)
+  
+
+# Web stuff ---------------------------------------------------------------
+
+###XPATH TIPS###
+
+
+#xpath for node value contains
+Xpath="//*[contains(text(),'here')]"
+
+#attr contains
+xpath="//a[contains(@prop,'Foo')]"
+
+#xpath intersection of to nodesets
+#The kayessian|kayesian intersection of two node-sets $ns1 and $ns2 is evaluated by the following XPath expression:
+
+xpath="$ns1[count(.| $ns2)=count($ns2)]"
+
+#so I made a function:
+bt_xpath_nodes_intersect = function(ns1, ns2){
+  return(paste0(
+    ns1, "[count(.| ", ns2, ")=count(", ns2, ")]"
+  ))
+}
+
+
+# get the URL of a page after any redirects 
+r = httr::GET(lex.source.url)
+source.url = r$url
+
+#direct GET to xpath-able html doc
+html <- httr::GET(url = tgt.url) %>% 
+  httr::content() %>%
+  htmlParse(asText=T, encoding = "UTF-8")
+
+
+
+
+
+
 #deliberately masking the function with this one to make the script work without having to edit it
 read_html = function(some.url){
   return(httr::GET(url = some.url, httr::config(ssl_verifypeer = FALSE)) %>% 
@@ -115,6 +134,7 @@ read_html = function(some.url){
 }
 
 #including headers in the request
+#you can replace with your own headers, use F12 in your browser and inspect 'network' tab when pg is loading
 headers = c(
   "Host" = "pib.gov.in",
   "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:87.0) Gecko/20100101 Firefox/87.0",
@@ -129,10 +149,6 @@ headers = c(
   "Cache-Control" = "max-age=0" 
 )
 
-
-
-
-
 html <- read_html(httr::GET(url = main.url,
                             httr::add_headers(.headers=headers)))%>%
   html_text() %>%
@@ -145,20 +161,118 @@ page <- httr::GET(url = "www.website.com/data",
                   httr::add_headers(.headers = headers)) %>%
   httr::content()
 
-#use cmd.exe to find a string in a directory and subdirs
-# win+r cmd.exe enter
-#cd C:\Users\c-cam\GTA data team Dropbox\Bastiat
-#findstr /s /i fw_user *.*
-#findstr /s /i fw_user *.R
 
 
-#regex for CJK characters, must have perl enabled!
-grepl(pattern = "[\\p{Han}\\p{Hangul}]", 
-      x = "ì¤‘êµ­ í…ì„¼íŠ¸, ìŒì•…ì €ìž‘ê¶Œ ë…ì ì‚¬ìš©ê¶Œ í¬ê¸°ì— ê´€í•œ ì„±ëª…ì„œ ë°œí‘œ", 
-      perl=T)
 
-# another regex for japanese chars
-grepl(pattern = "^([一-龠]+|[ぁ-ゔ]+|[ァ-ヴー]+|[ａ-ｚＡ-Ｚ０-９]+|[々〆〤ヶ])")
+# Misc tips ---------------------------------------------------------------
+
+
+### play a system sound in console
+
+#simple, only plays default 'beep'
+system("rundll32 user32.dll,MessageBeep 1")
+
+#more complex, can play most sounds
+system("PowerShell -C (New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()")
+
+system("PowerShell -C (New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\tada.wav').PlaySync()")
+
+
+
+### windows system command to find a string
+
+system('findstr /s /i fw_user *.R')
+
+
+
+### trycatch something that is taking too long
+
+# useful for killing unstable scrapers
+
+library(R.utils)
+
+for (i in 1:nrow(update.table)){
+  cat(sprintf("Extracting article info %i/%i...", i, nrow(update.table)))
+  tryCatch(
+    withTimeout( {
+      update.table$act.description.en[i] = extractInfo(remDr, update.table$act.url[i]);
+      cat("[Done]\n") },
+      timeout = 20),
+    TimeoutException = function(ex){ cat("[Skipped due to timeout]\n")}, 
+    error=function(cond){
+      message("[caught error] timeout, skipping")
+    },
+    warning=function(cond){
+      message("[caught warning] timeout, skipping")
+    }
+  )
+  
+  
+}
+
+#get the running processes as a df on the server (or any UNIX system)
+#devtools::source_url("https://github.com/mathosi/cluster_check/blob/master/ps_to_df.R?raw=TRUE")
+
+ps.to.df<-function(simple.selection="-A", bylist.selection=NULL,
+                   process.sort="-%cpu", top.rows=NULL, other=NULL){
+  if(is.null(other)){ #If no 'other' argument specified, run default cmd
+    if(is.null(bylist.selection)){
+      #If no arg for 'bylist.selection', use 'simple.selection' arg
+      base.cmd<-paste0(
+        "ps ", simple.selection,
+        " --no-headers -o %cpu:5,%mem:5,pid:7,ppid:7,user:36,comm:15,lstart:30,etime:30,stat:5 --sort=")  
+    } else { #Use 'bylist.selection' arg
+      base.cmd<-paste0(
+        "ps ", bylist.selection,
+        " --no-headers -o %cpu:5,%mem:5,pid:7,ppid:7,user:36,comm:15,lstart:30,etime:30,stat:5 --sort=")
+    }
+    if(is.null(top.rows)){ cmd<-paste0(base.cmd, process.sort) } else {
+      cmd<-paste0(base.cmd, process.sort, " | head -n ", top.rows)
+    }
+    cmd.res<-system(command = cmd,intern = TRUE) #Get result from cmd
+    df.res<-data.frame(
+      perCPU = as.numeric(substr(x = cmd.res,start = 1,stop = 5)),
+      perMEM = as.numeric(substr(x = cmd.res,start = 6,stop = 11)),
+      PID = as.integer(substr(x = cmd.res, start = 12, stop = 19)),
+      PPID = as.integer(substr(x = cmd.res, start = 20, stop = 27)),
+      USER = gsub(pattern = "\\s+$", replacement = "",
+                  x = substr(x = cmd.res,start = 29, stop = 65)),
+      COMMAND = gsub(pattern = "\\s+$", replacement = "",
+                     x = substr(x = cmd.res, start = 66, stop = 80)),
+      STARTED = gsub(pattern = "^\\s+", replacement = "",
+                     x = substr(x = cmd.res, start = 81, stop = 111)),
+      ELAPSED = gsub(pattern = "^\\s+", replacement = "",
+                     x = substr(x = cmd.res, start = 112, stop = 142)),
+      STAT = substr(x = cmd.res, start = 144, stop = 149))
+  } else { #If 'other' is specified, skip command to get info 
+    if(other=="L"){
+      cmd.res<-system(command = "ps L",intern = TRUE)
+      df.res<-do.call(rbind,lapply(X = sapply(X = cmd.res, FUN = strsplit, " "),
+                                   FUN = function(i){ i[grepl(".", i)] }))
+      row.names(df.res)<-NULL
+      colnames(df.res)<-c("CODE","HEADER")
+    } else { stop("Unknown option.") }
+  }
+  return(df.res)
+}
+
+ps.to.df() #List All processes sorted by %CPU usage
+ps.to.df(bylist.selection = "C rsession") #List All processes named 'rsession' sorted by %CPU usage
+
+
+
+
+
+
+
+
+
+
+
+
+# OLD TIPS ----------------------------------------------------------------
+# from when I had just started :)
+
 
 # great resource for explaining... well, advanced R!
 # e.g. subsetting types, etc
@@ -190,6 +304,14 @@ df = data.frame(matrix(nrow=0, ncol=numberOfColumns), stringsAsFactors = F)
 # only works for WINDOWS
 Sys.setlocale("LC_ALL","Japanese")
 
+# the best general one to use is
+Sys.setlocale("LC_ALL","C")
+#also this is the only one that a standard UNIX server will allow. you can't
+#change the locale on a server (so things like 
+Sys.setlocale("LC_ALL","German")
+as.Date("17. Dezember 1990", "%d. %M %Y")
+#will not work)
+
 # to remove rows based on duplicates in one column
 table=subset(table, !duplicated(act.title.en))
 
@@ -215,17 +337,12 @@ table.main = table.main[grepl("ARANCEL", table.main$act.title.ll),]
 #'zip'/concatenate/combine each row of df into string, then these into string vector with length nrow(df)
 months.master = apply(month.names, 1, paste, collapse=")|(")
 
-#remove backslashes
-gsub("\\\\", "", string)
-
-
 #summmarise cats by features
 train.full %>% group_by(relevant) %>% summarise_all(mean)
 
 
 
-#fix encoding of a column in a dataframe
-Encoding(articles$act.title.en) <- "UTF-8"
+
 
 
 
@@ -251,8 +368,7 @@ html <- htmlParse(remDr$getSource()[[1]], asText=T)
 #coercing dates which have saved as numeric strings back into dates
 articles$act.date = as.Date(as.numeric(articles$act.date), origin = "1970-01-01")
 
-# cool progress bar
-t
+
 
 
 #iterative binding
@@ -268,29 +384,16 @@ cc_iter_bind = function(iter.var = i, FUN, df, iter.var.min = 1){
   
   
 }
-gtasql::gta_sql_pool_open()
-###XPATH TIPS###
 
 
-#xpath for node value contains
-Xpath="//*[contains(text(),'here')]"
-
-#attr contains
-xpath="//a[contains(@prop,'Foo')]"
-
-#xpath intersection of to nodesets
-#The kayessian|kayesian intersection of two node-sets $ns1 and $ns2 is evaluated by the following XPath expression:
-
-xpath="$ns1[count(.| $ns2)=count($ns2)]"
-
-bt_xpath_nodes_intersect = function(ns1, ns2){
-  return(paste0(
-    ns1, "[count(.| ", ns2, ")=count(", ns2, ")]"
-  ))
-}
 
 
   
+
+# RSELENIUM ---------------------------------------------------------------
+
+#I do not recommend using this. When you get it working, it works well. But it's
+#so unstable and environment sensitive that you should use webdriver instead.
   
 ###USING RSELENIUM INSTEAD OF WEBDRIVER - DO NOT FORGET TO CLEAN UP AS WELL!!!!!!###
 library(wdman)
