@@ -3,9 +3,11 @@
 
 #translate using google (gl_translate)
 
+#to authorise google translate for this session - remember to reauthorise it on the server afterwards!
+#gl_auth("setup/GTA-translate-95dde0648194.json")
+
 for(i in 1:nrow(update.table)){
   update.table$act.title.en[i]=gl_translate(as.character(update.table$act.title.ll[i]))$translatedText
-  update.table$act.description.en[i] = gl_translate(as.character(update.table$act.description.ll[i]))$translatedText
 }
 
 #get the running processes as a df on the server
@@ -32,6 +34,9 @@ for (i in 1:length(plop)){
   
 }
 
+# Count number of distinct elements per group (like GROUP BY in SQL)
+
+counts = aggregate(unique.thing ~ group.variable, data.frame, function(x) length(unique(x)))
 
 #play a system sound in console
 #simple, only plays default 'beep'
@@ -41,6 +46,16 @@ system("rundll32 user32.dll,MessageBeep 1")
 system("PowerShell -C (New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()")
 
 system("PowerShell -C (New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\tada.wav').PlaySync()")
+
+
+# windows system command to find a string
+#'findstr /s /i fw_user *.R'
+
+
+#unescape unicode like <U+123F>
+library(stringi)
+stri_unescape_unicode(gsub("<U\\+(....)>", "\\\\u\\1", desired.departments))
+
 
 
 ##timing logic for unstable scrapers
@@ -69,8 +84,9 @@ library(R.utils)
     
   }
   
-
-
+# get the URL of a page after any redirects
+r = httr::GET(lex.source.url)
+source.url = r$url
 
 #direct GET to xpath-able html doc
 html <- httr::GET(url = tgt.url) %>% 
@@ -114,6 +130,9 @@ headers = c(
 )
 
 
+
+
+
 html <- read_html(httr::GET(url = main.url,
                             httr::add_headers(.headers=headers)))%>%
   html_text() %>%
@@ -137,6 +156,9 @@ page <- httr::GET(url = "www.website.com/data",
 grepl(pattern = "[\\p{Han}\\p{Hangul}]", 
       x = "ì¤‘êµ­ í…ì„¼íŠ¸, ìŒì•…ì €ìž‘ê¶Œ ë…ì ì‚¬ìš©ê¶Œ í¬ê¸°ì— ê´€í•œ ì„±ëª…ì„œ ë°œí‘œ", 
       perl=T)
+
+# another regex for japanese chars
+grepl(pattern = "^([一-龠]+|[ぁ-ゔ]+|[ァ-ヴー]+|[ａ-ｚＡ-Ｚ０-９]+|[々〆〤ヶ])")
 
 # great resource for explaining... well, advanced R!
 # e.g. subsetting types, etc
@@ -172,8 +194,11 @@ Sys.setlocale("LC_ALL","Japanese")
 table=subset(table, !duplicated(act.title.en))
 
 # on more than one column
-term.freq.rlv = term.freq.rlv %>%
-  filter(!duplicated(cbind(word, doc)))
+gta.lead.theme2 = subset(gta.lead.theme, !duplicated(gta.lead.theme[,c("lead.id", "theme.id")]))
+
+#dplyr method
+gta.lead.theme2 = gta.lead.theme %>% 
+  distinct(lead.id, theme.id, .keep_all = T)
 
 
 # to get the current year
@@ -227,12 +252,7 @@ html <- htmlParse(remDr$getSource()[[1]], asText=T)
 articles$act.date = as.Date(as.numeric(articles$act.date), origin = "1970-01-01")
 
 # cool progress bar
-pb = txtProgressBar(min = 0, max = 100, char = "~", style = 3)
-for (i in 1:100){
-  Sys.sleep(0.01)
-  setTxtProgressBar(pb, i)
-}
-close(pb)
+t
 
 
 #iterative binding
@@ -248,7 +268,7 @@ cc_iter_bind = function(iter.var = i, FUN, df, iter.var.min = 1){
   
   
 }
-
+gtasql::gta_sql_pool_open()
 ###XPATH TIPS###
 
 
